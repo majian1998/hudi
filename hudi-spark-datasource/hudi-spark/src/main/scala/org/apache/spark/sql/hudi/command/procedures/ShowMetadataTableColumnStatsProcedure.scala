@@ -64,7 +64,7 @@ class ShowMetadataTableColumnStatsProcedure extends BaseProcedure with Procedure
     super.checkArgs(PARAMETERS, args)
 
     val table = getArgValueOrDefault(args, PARAMETERS(0))
-    val partitions = getArgValueOrDefault(args, PARAMETERS(1)).getOrElse("").toString
+    val partitions = getArgValueOrDefault(args, PARAMETERS(1)).getOrElse(null).toString
     val partitionsSeq = partitions.split(",").filter(_.nonEmpty).toSeq
 
     val targetColumns = getArgValueOrDefault(args, PARAMETERS(2)).getOrElse("").toString
@@ -91,7 +91,11 @@ class ShowMetadataTableColumnStatsProcedure extends BaseProcedure with Procedure
           })
           .toSet
       } else {
-        partitionsSeq
+        metaTable.getAllPartitionPaths
+          .asScala
+          .filter(partition =>
+            partitionsSeq.exists(prefix => partition.startsWith(prefix))
+          )
           .flatMap(path => {
             val fsViews = fsView.getLatestFileSlices(path).iterator().asScala
             fsViews.toStream.foreach(fs => {

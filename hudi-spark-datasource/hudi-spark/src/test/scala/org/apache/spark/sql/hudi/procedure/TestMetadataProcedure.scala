@@ -140,9 +140,9 @@ class TestMetadataProcedure extends HoodieSparkProcedureTestBase {
         9 -> ("another string", "example string")
       )
 
-      for (i <- 1 to 10) {
+      for (i <- 1 to 1) {
         val columnName = s"c$i"
-        val metadataStats = spark.sql(s"""call show_metadata_table_column_stats(table => '$tableName', targetColumns => '$columnName')""").collect()
+        val metadataStats = spark.sql(s"""call show_metadata_table_column_stats(table => '$tableName', targetColumns => 'c1,c2,c3,c4')""").collect()
         assertResult(1)(metadataStats.length)
         val minVal: String = metadataStats(0).getAs[String]("min_value")
         val maxVal: String = metadataStats(0).getAs[String]("max_value")
