@@ -38,7 +38,6 @@ import java.util.function.{Function, Supplier}
 import scala.collection.{JavaConversions, mutable}
 import scala.jdk.CollectionConverters.{asScalaBufferConverter, asScalaIteratorConverter, collectionAsScalaIterableConverter}
 
-
 class ShowMetadataTableColumnStatsProcedure extends BaseProcedure with ProcedureBuilder with Logging {
   private val PARAMETERS = Array[ProcedureParameter](
     ProcedureParameter.required(0, "table", DataTypes.StringType),
