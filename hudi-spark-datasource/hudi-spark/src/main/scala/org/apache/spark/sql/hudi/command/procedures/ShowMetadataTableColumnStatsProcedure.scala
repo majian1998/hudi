@@ -22,7 +22,6 @@ import org.apache.hadoop.fs.FileStatus
 import org.apache.hudi.avro.model._
 import org.apache.hudi.client.common.HoodieSparkEngineContext
 import org.apache.hudi.common.config.HoodieMetadataConfig
-import org.apache.hudi.common.model.FileSlice
 import org.apache.hudi.common.table.HoodieTableMetaClient
 import org.apache.hudi.common.table.timeline.{HoodieDefaultTimeline, HoodieInstant}
 import org.apache.hudi.common.table.view.HoodieTableFileSystemView
@@ -36,7 +35,6 @@ import org.apache.spark.sql.types.{DataTypes, Metadata, StructField, StructType}
 
 import java.util
 import java.util.function.{Function, Supplier}
-import scala.collection.convert.ImplicitConversions.`list asScalaBuffer`
 import scala.collection.{JavaConversions, mutable}
 import scala.jdk.CollectionConverters.{asScalaBufferConverter, asScalaIteratorConverter, collectionAsScalaIterableConverter}
 
@@ -49,11 +47,11 @@ class ShowMetadataTableColumnStatsProcedure extends BaseProcedure with Procedure
   )
 
   private val OUTPUT_TYPE = new StructType(Array[StructField](
-    StructField("file_name", DataTypes.StringType, nullable = true, Metadata.empty),
-    StructField("column_name", DataTypes.StringType, nullable = true, Metadata.empty),
-    StructField("min_value", DataTypes.StringType, nullable = true, Metadata.empty),
-    StructField("max_value", DataTypes.StringType, nullable = true, Metadata.empty),
-    StructField("null_num", DataTypes.LongType, nullable = true, Metadata.empty)
+    StructField("File Name", DataTypes.StringType, nullable = true, Metadata.empty),
+    StructField("Column Name", DataTypes.StringType, nullable = true, Metadata.empty),
+    StructField("Min Value", DataTypes.StringType, nullable = true, Metadata.empty),
+    StructField("Max Value", DataTypes.StringType, nullable = true, Metadata.empty),
+    StructField("Null Number", DataTypes.LongType, nullable = true, Metadata.empty)
   ))
 
   def parameters: Array[ProcedureParameter] = PARAMETERS
@@ -64,7 +62,7 @@ class ShowMetadataTableColumnStatsProcedure extends BaseProcedure with Procedure
     super.checkArgs(PARAMETERS, args)
 
     val table = getArgValueOrDefault(args, PARAMETERS(0))
-    val partitions = getArgValueOrDefault(args, PARAMETERS(1)).getOrElse(null).toString
+    val partitions = getArgValueOrDefault(args, PARAMETERS(1)).getOrElse("").toString
     val partitionsSeq = partitions.split(",").filter(_.nonEmpty).toSeq
 
     val targetColumns = getArgValueOrDefault(args, PARAMETERS(2)).getOrElse("").toString
@@ -78,42 +76,21 @@ class ShowMetadataTableColumnStatsProcedure extends BaseProcedure with Procedure
     val fsView = buildFileSystemView(table)
     val partitionFileNameList: util.List[HPair[String, String]] = new util.ArrayList[HPair[String, String]]()
 
-    val allFileSlices: Set[FileSlice] = {
-      if (partitionsSeq.isEmpty) {
-        metaTable.getAllPartitionPaths
-          .asScala
-          .flatMap(path => {
-            val fsViews = fsView.getLatestFileSlices(path).iterator().asScala
-            fsViews.toStream.foreach(fs => {
-              partitionFileNameList :+ HPair.of(path, fs.getBaseFile.get().getFileName)
-            })
-            fsViews
-          })
-          .toSet
-      } else {
-        metaTable.getAllPartitionPaths
-          .asScala
-          .filter(partition =>
-            partitionsSeq.exists(prefix => partition.startsWith(prefix))
-          )
-          .flatMap(path => {
-            val fsViews = fsView.getLatestFileSlices(path).iterator().asScala
-            fsViews.toStream.foreach(fs => {
-              partitionFileNameList :+ HPair.of(path, fs.getBaseFile.get().getFileName)
-            })
-            fsViews
-          })
-          .toSet
-      }
-    }
+    metaTable.getAllPartitionPaths
+      .asScala
+      .filter(path => partitionsSeq.isEmpty || partitionsSeq.exists(prefix => path.startsWith(prefix)))
+      .foreach(path => {
+        val fsViews = fsView.getLatestFileSlices(path).iterator().asScala
+        fsViews.toStream.foreach(fs => {
+          partitionFileNameList.add(HPair.of(path, fs.getBaseFile.get().getFileName))
+        })
+      })
 
     val rows = mutable.ListBuffer[Row]()
     targetColumnsSeq.toStream.foreach(targetColumn => {
       val colStatsRecords: util.Collection[HoodieMetadataColumnStats] = metaTable.getColumnStats(partitionFileNameList, targetColumn).values()
-      val allFileNames: Set[String] = allFileSlices.map(_.getBaseFile.get().getFileName)
 
       colStatsRecords.asScala
-        .filter(c => allFileNames.contains(c.getFileName))
         .foreach { c =>
           rows += Row(c.getFileName, c.getColumnName, getColumnStatsValue(c.getMinValue),
             getColumnStatsValue(c.getMaxValue), c.getNullCount.longValue())
@@ -125,6 +102,7 @@ class ShowMetadataTableColumnStatsProcedure extends BaseProcedure with Procedure
 
   private def getColumnStatsValue(stats_value: Any): String = {
     stats_value match {
+      case null => "null"
       case _: IntWrapper |
            _: BooleanWrapper |
            _: DateWrapper |
